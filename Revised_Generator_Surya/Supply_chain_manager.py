@@ -1,9 +1,7 @@
 # supply_chain_manager.py
 
-import networkx as nx
 import pandas as pd
 from config import *
-import csv
 import os
 import random
 from datetime import datetime

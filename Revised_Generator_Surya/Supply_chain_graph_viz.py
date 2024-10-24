@@ -3,9 +3,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import networkx as nx
 import pandas as pd
-import matplotlib.pyplot as plt
 from IPython.display import display, HTML
-import random
 from collections import defaultdict
 
 

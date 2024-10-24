@@ -2,7 +2,6 @@
 import sys
 import streamlit as st
 import matplotlib.pyplot as plt
-from streamlit import plotly_chart
 import networkx as nx
 import pandas as pd
 import plotly.graph_objects as go
@@ -12,12 +11,9 @@ import streamlit.components.v1 as components
 from data_generator import SupplyChainGenerator
 from Supply_chain_manager import SupplyChainManager
 from graph_analyzer import SupplyChainAnalyzer
-from graph_visualisation import EnhancedSupplyChainVisualizer
-import json
 from config import *
 import time
-import threading
-import queue
+
 
 
 # Set page config
