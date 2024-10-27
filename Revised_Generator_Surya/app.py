@@ -13,6 +13,7 @@ from Supply_chain_manager import SupplyChainManager
 from graph_analyzer import SupplyChainAnalyzer
 from config import *
 import time
+import pickle
 
 
 
@@ -250,6 +251,8 @@ class SupplyChainApp:
         G = st.session_state.manager.G
         pos = nx.spring_layout(G, k=1 / np.sqrt(len(G.nodes())), iterations=50)
 
+
+
         # Create edges trace
         edge_x = []
         edge_y = []
@@ -442,6 +445,16 @@ class SupplyChainApp:
                 st.success(f"Data exported successfully to {export_path} directory!")
             except Exception as e:
                 st.error(f"Error exporting data: {str(e)}")
+
+            # Add save to pickle functionality
+        st.subheader("Save Graph Object")
+        if st.button("Save to Pickle"):
+            try:
+                with open("graph_object.pkl", "wb") as f:
+                    pickle.dump(G, f)
+                st.success("Graph object saved to graph_object.pkl")
+            except Exception as e:
+                st.error(f"Error saving graph object: {str(e)}")
 
         # Display detailed analysis plots
         st.subheader("Graph Analysis")
