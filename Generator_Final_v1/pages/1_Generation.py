@@ -27,17 +27,63 @@ def export_data(generator, export_dir):
         return False, f"Error exporting data: {str(e)}"
 
 
-def export_to_server(generator, url):
+def export_to_server(generator, url,version):
     try:
-        export_list = generator.return_operation()
-        # for i in range(20):
-        # print(export_list[i])
-        for i in range(0,len(export_list),2000):
-            requests.post(f"{url}/schema/live/update/bulk", json=export_list[i:i+2000])
-            time.sleep(0.5)
-            # st.write("Batch",i," has been sent to the server")
-            # print()
-        return True, f"Data successfully exported to Server"
+        # export_list = generator.return_operation()
+        create_ops_dict = generator.return_create_operations()
+        update_ops_dict = generator.return_update_operations()
+
+        total_create_ops = sum(len(ops) for ops in create_ops_dict.values())
+        total_update_ops = sum(len(ops) for ops in update_ops_dict.values())
+        total_ops = total_create_ops + total_update_ops
+        # print(create_ops_dict)
+        # sorted_create_ops_dict = {k:create_ops_dict[k] for k in sorted(create_ops_dict.keys())}
+        # sorted_update_ops_dict = {k:update_ops_dict[k] for k in sorted(update_ops_dict.keys())}
+
+        # print(update_ops_dict)
+
+        progress = st.progress(0)
+        current_progress = 0
+
+        for key, list_ops in create_ops_dict.items():
+            for i in range(0, len(list_ops), 1000):
+                bulk_create_payload = {
+                    "version": version,
+                    "action": "bulk_create",
+                    "type": "schema",
+                    "timestamp": key,
+                    "payload": []
+                }
+                for op in list_ops[i:i + 1000]:
+                    bulk_create_payload['payload'].append(op['payload'])
+                requests.post(f"{url}/schema/live/update", json=bulk_create_payload)
+                time.sleep(1)
+
+                current_progress += len(list_ops[i:i + 1000])
+                progress.progress(current_progress / total_ops)
+
+            # st.write(f"Timestamp {key} has been sent to the server for creation")
+
+        for key, list_ops in update_ops_dict.items():
+            for i in range(0, len(list_ops), 1000):
+                bulk_update_payload = {
+                    "version": version,
+                    "action": "bulk_update",
+                    "type": "schema",
+                    "timestamp": key,
+                    "payload": []
+                }
+                for op in list_ops[i:i + 1000]:
+                    bulk_update_payload['payload'].append(op['payload'])
+                requests.post(f"{url}/schema/live/update", json=bulk_update_payload)
+                time.sleep(1)
+
+                current_progress += len(list_ops[i:i + 1000])
+                progress.progress(current_progress / total_ops)
+
+            # st.write(f"Timestamp {key} has been sent to the server for updating")
+
+        return True, "Data successfully exported to Server"
     except Exception as e:
         return False, f"Error exporting data: {str(e)}"
 
@@ -52,22 +98,22 @@ def main():
         st.header("Configuration")
         total_nodes = st.number_input(
             "Total Variable Nodes",
-            min_value=100,
-            max_value=10000,
+            min_value=30,
+            max_value=100000,
             value=1000,
-            step=100
+            step=200
         )
         base_periods = st.number_input(
             "Base Time Periods",
             min_value=1,
-            max_value=24,
+            max_value=36,
             value=12,
             step=1
         )
         version = st.text_input("Enter the version")
 
     # Main area tabs
-    tab1, tab2 = st.tabs(["Generate Data", "Simulation Control"])
+    tab1, tab2,tab3 = st.tabs(["Generate Data", "Simulation Control","Supply - chain Simulator"])
 
     with tab1:
         col1, col2 = st.columns(2)
@@ -105,7 +151,7 @@ def main():
 
                     if st.button("Export to server"):
                         with st.spinner("Exporting data to Server..."):
-                            success, message = export_to_server(st.session_state.generator, url)
+                            success, message = export_to_server(st.session_state.generator, url,version)
                             if success:
                                 st.success(message)
                             else:
@@ -155,6 +201,11 @@ def main():
 
         else:
             st.info("Please generate initial supply chain data first.")
+
+    with tab3:
+        if st.button("Simulate the graph"):
+            st.write("Simulation will be done here")
+
 
 
 if __name__ == "__main__":

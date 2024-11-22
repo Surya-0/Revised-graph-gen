@@ -1,4 +1,4 @@
-# pages/2_📈_Visualization.py
+# pages/2_Visualization.py
 import streamlit as st
 import pandas as pd
 import networkx as nx

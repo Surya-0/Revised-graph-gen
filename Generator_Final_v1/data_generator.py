@@ -7,6 +7,7 @@ import networkx as nx
 import pandas as pd
 from datetime import datetime, timedelta
 from config import *
+from collections import defaultdict
 
 
 class SupplyChainGenerator:
@@ -14,9 +15,11 @@ class SupplyChainGenerator:
         self.G = nx.DiGraph()
         self.temporal_graphs = {}
         self.temporal_data = {}
+
         self.FIXED_BUSINESS_GROUPS = 1
         self.FIXED_PRODUCT_FAMILIES = 4
         self.FIXED_PRODUCT_OFFERINGS = 21
+
         self.total_variable_nodes = total_variable_nodes
         self.base_periods = base_periods
         self.current_period = 0
@@ -24,9 +27,17 @@ class SupplyChainGenerator:
         self.initialize_storage()
 
         self.operations_log = []  # List to store all create/update operations
-        self.version = version
 
+        self.version = version
+        self.create_ops = defaultdict(list) # timestamp : [create operations in that timestamp]
+        self.update_ops = defaultdict(list) # timestamp : [update operations in that timestamp]
         self.timestamp = 0
+
+        self.simulation_graphs = {}
+        self.simulation_timestamp = 0
+
+
+
 
     def _log_node_operation(self, action, node_id, node_type, properties):
         """Log node creation/update operations"""
@@ -43,6 +54,13 @@ class SupplyChainGenerator:
         }
         self.operations_log.append(operation)
 
+        if action == "create":
+            self.create_ops[self.timestamp].append(operation)
+        elif action == "update":
+            self.update_ops[self.timestamp].append(operation)
+
+
+
     def _log_edge_operation(self, action, source_id, target_id, properties,edge_type):
         """Log edge creation/update operations"""
         operation = {
@@ -58,10 +76,20 @@ class SupplyChainGenerator:
             "version": self.version
         }
         self.operations_log.append(operation)
+        if action == "create":
+            self.create_ops[self.timestamp].append(operation)
+        elif action == "update":
+            self.update_ops[self.timestamp].append(operation)
         # print("The edge operation is : ",operation)
 
     def return_operation(self):
         return self.operations_log
+
+    def return_create_operations(self):
+        return self.create_ops
+
+    def return_update_operations(self):
+        return self.update_ops
 
     def simulate_next_period(self):
         """Generate data for the next time period based on the last period's data"""
@@ -371,7 +399,7 @@ class SupplyChainGenerator:
                 if 'transportation_cost' in attrs:
                     new_transport_cost = self._generate_temporal_value(attrs['transportation_cost'], 'transportation_cost', time_period)
                     changes = {'transportation_cost' : new_transport_cost}
-                    self._log_edge_operation("update",u,v,changes,"SUPPLIERS_WAREHOUSE")
+                    self._log_edge_operation("update",u,v,changes,"SUPPLIERSToWAREHOUSE")
 
                     period_graph.edges[u, v]['transportation_cost'] = new_transport_cost
                     period_data[f"edge_{u}_{v}_transport_cost"] = new_transport_cost
@@ -381,7 +409,7 @@ class SupplyChainGenerator:
                         attrs['inventory_level'], 'inventory', time_period)
 
                     changes = {'inventory_level' : new_inventory}
-                    self._log_edge_operation("update",u,v,changes,"WAREHOUSE_PARTS")
+                    self._log_edge_operation("update",u,v,changes,"WAREHOUSEToPARTS")
 
                     period_graph.edges[u, v]['inventory_level'] = new_inventory
                     period_data[f"edge_{u}_{v}_inventory"] = new_inventory
@@ -562,7 +590,7 @@ class SupplyChainGenerator:
                         'lead_time': random.uniform(*TRANSPORTATION_TIME_RANGE)
                     }
                     self.G.add_edge(supplier['id'], warehouse['id'], **edge_data)
-                    self._log_edge_operation("create",supplier['id'],warehouse['id'],edge_data,"SUPPLIERS_WAREHOUSE")
+                    self._log_edge_operation("create",supplier['id'],warehouse['id'],edge_data,"SUPPLIERSToWAREHOUSE")
 
             # Connect to subassembly warehouses if supplier provides subassemblies
             if any(t in PART_TYPES['subassembly'] for t in supplier['supplied_part_types']):
@@ -576,7 +604,7 @@ class SupplyChainGenerator:
                         'lead_time': random.uniform(*TRANSPORTATION_TIME_RANGE)
                     }
                     self.G.add_edge(supplier['id'], warehouse['id'], **edge_data)
-                    self._log_edge_operation("create", supplier['id'], warehouse['id'], edge_data,"SUPPLIERS_WAREHOUSE")
+                    self._log_edge_operation("create", supplier['id'], warehouse['id'], edge_data,"SUPPLIERSToWAREHOUSE")
 
     def _connect_warehouses_to_parts(self):
         for warehouse in sum(self.warehouses.values(), []):
@@ -609,7 +637,7 @@ class SupplyChainGenerator:
                     'storage_cost': random.uniform(*COST_RANGE)
                 }
                 self.G.add_edge(warehouse['id'], part['id'], **edge_data)
-                self._log_edge_operation("create",warehouse['id'], part['id'],edge_data,"WAREHOUSE_PARTS")
+                self._log_edge_operation("create",warehouse['id'], part['id'],edge_data,"WAREHOUSEToPARTS")
                 # Update warehouse current capacity
                 self.G.nodes[warehouse['id']]['current_capacity'] = current_inventory
                 changes = {'current_capacity': current_inventory}
@@ -631,7 +659,7 @@ class SupplyChainGenerator:
                     'lead_time': random.uniform(*TRANSPORTATION_TIME_RANGE)
                 }
                 self.G.add_edge(part['id'], facility['id'], **edge_data)
-                self._log_edge_operation("create", part['id'],facility['id'],edge_data,"PARTS_FACILITY")
+                self._log_edge_operation("create", part['id'],facility['id'],edge_data,"PARTSToFACILITY")
 
             # Each external facility produces subassembly parts
             subassembly_parts = random.sample(
@@ -645,7 +673,7 @@ class SupplyChainGenerator:
                     'quantity': random.randint(*QUANTITY_RANGE)
                 }
                 self.G.add_edge(facility['id'], part['id'], **edge_data)
-                self._log_edge_operation("create",  facility['id'], part['id'],edge_data,"FACILITY_PARTS")
+                self._log_edge_operation("create",  facility['id'], part['id'],edge_data,"FACILITYToPARTS")
 
         # Connect subassembly parts to LAM facilities to create products
         for facility in self.facilities['lam']:
@@ -662,7 +690,7 @@ class SupplyChainGenerator:
                     'lead_time': random.uniform(*TRANSPORTATION_TIME_RANGE)
                 }
                 self.G.add_edge(part['id'], facility['id'], **edge_data)
-                self._log_edge_operation("create",  part['id'],facility['id'], edge_data,"PARTS_FACILITY")
+                self._log_edge_operation("create",  part['id'],facility['id'], edge_data,"PARTSToFACILITY")
 
     def _connect_facilities_to_products(self):
         # LAM facilities produce final products (product offerings)
@@ -679,7 +707,7 @@ class SupplyChainGenerator:
                     'quantity': random.randint(*QUANTITY_RANGE)
                 }
                 self.G.add_edge(facility['id'], product['id'], **edge_data)
-                self._log_edge_operation("create",facility['id'], product['id'],edge_data,"FACILITY_PRODUCT_OFFERING")
+                self._log_edge_operation("create",facility['id'], product['id'],edge_data,"FACILITYToPRODUCT_OFFERING")
 
                 # Connect to LAM warehouse for storage
                 for warehouse in self.warehouses['lam']:
@@ -688,13 +716,13 @@ class SupplyChainGenerator:
                         'storage_cost': random.uniform(*COST_RANGE)
                     }
                     self.G.add_edge(product['id'], warehouse['id'], **edge_data)
-                    self._log_edge_operation("create", product['id'], warehouse['id'], edge_data,"PRODUCT_OFFERING_WAREHOUSE")
+                    self._log_edge_operation("create", product['id'], warehouse['id'], edge_data,"PRODUCT_OFFERINGToWAREHOUSE")
 
     def _connect_hierarchy(self):
         # Connect business group to product families
         for pf in self.product_families:
             self.G.add_edge('BG_001', pf['id'], type='hierarchy')
-            self._log_edge_operation("create",'BG_001', pf['id'],{},"BUSINESS_GROUP_PROUDUCT_FAMILY")
+            self._log_edge_operation("create",'BG_001', pf['id'],{},"BUSINESS_GROUPToPRODUCT_FAMILY")
 
         # Connect product families to their respective product offerings
         for pf in self.product_families:
@@ -705,7 +733,7 @@ class SupplyChainGenerator:
             ]
             for po in family_offerings:
                 self.G.add_edge(pf['id'], po['id'], type='hierarchy')
-                self._log_edge_operation("create",pf['id'],po['id'],{},"PRODUCT_FAMILY_PRODUCT_OFFERING")
+                self._log_edge_operation("create",pf['id'],po['id'],{},"PRODUCT_FAMILYToPRODUCT_OFFERING")
 
     def _calculate_distances(self):
         # Simple distance calculation between warehouses and facilities
@@ -717,6 +745,32 @@ class SupplyChainGenerator:
                     distance = random.randint(*DISTANCE_RANGE)
                 self.G.nodes[warehouse['id']]['distances'] = self.G.nodes[warehouse['id']].get('distances', {})
                 self.G.nodes[warehouse['id']]['distances'][facility['id']] = distance
+
+
+    # def create_simulation(self):
+    #     copy_graph = self.G.copy()
+    #     base_graph = self.G.copy()
+    #
+    #     for offering in self.product_offerings:
+    #         offering_id = offering['id']
+    #         demand = base_graph.nodes[offering_id].get('demand',0)
+    #         cost = base_graph.nodes[offering_id].get('cost',0)
+    #
+    #         po_revenue = demand * cost
+    #         copy_graph.nodes['offering_id']['calculated_revenue'] = po_revenue
+    #         print(f"Product Offering {offering_id}: Revenue = {po_revenue}")
+    #
+    #     for family in self.product_families:
+    #         family_id = family['id']
+    #         PF_revenue = 0
+    #
+    #         for offering in self.product_offerings:
+
+
+
+
+
+
 
     def get_graph(self):
         return self.G
@@ -753,6 +807,7 @@ class SupplyChainGenerator:
             },
             'total_nodes': self.G.number_of_nodes()
         }
+
 
     def export_to_csv(self, export_dir='exports'):
         """Export all supply chain data with separate files for each node type and timestamp, including temporal attributes"""
